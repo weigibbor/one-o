@@ -184,7 +184,7 @@ final class FoldController: ObservableObject {
         let d = UserDefaults.standard
         let longSide = max(screen.frame.width, screen.frame.height) * screen.backingScaleFactor
         let scale = d.object(forKey: "captureScale") as? Double ?? min(1.0, 2560.0 / longSide)   // cap the source like lid-plane; blur cost scales with it
-        captureFps = d.object(forKey: "captureFps") as? Int ?? rate           // tuning: capture rate while folding
+        captureFps = d.object(forKey: "captureFps") as? Int ?? (options.hold ? min(60, rate) : rate)   // hold mode re-blurs every captured frame; 60 is plenty
         let pixelSize = CGSize(width: (screen.frame.width * screen.backingScaleFactor * scale).rounded(), height: (screen.frame.height * screen.backingScaleFactor * scale).rounded())
         let windowID = CGWindowID(panel.windowNumber)
         Task {
