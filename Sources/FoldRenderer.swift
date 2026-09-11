@@ -1,6 +1,9 @@
 import CoreVideo
 import MetalKit
 import simd
+import os
+
+private let log = Logger(subsystem: "com.gelabs.oneo", category: "render")
 
 /// Matches FoldUniforms in Fold.metal (float2 + 5 floats, 8-byte aligned).
 struct FoldUniforms {
@@ -30,6 +33,10 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     private var motion: FoldMotion
     private var lastDraw: CFTimeInterval = 0
     private var announcedFirstFrame = false
+    private var frameDt: Double = 0
+    private var frames = 0; private var fpsWindowStart: CFTimeInterval = 0
+    private var linkSum = 0.0, cpuSum = 0.0, gpuSum = 0.0, gpuCount = 0
+    weak var view: MTKView?
 
     init?(device: MTLDevice, openAngle: Double) {
         guard let queue = device.makeCommandQueue(),
@@ -53,14 +60,29 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
+    /// Driven by a CADisplayLink so ProMotion panels actually run us at their top rate.
+    @objc func tick(_ link: CADisplayLink) {
+        frameDt = lastDraw == 0 ? 0 : link.targetTimestamp - lastDraw
+        lastDraw = link.targetTimestamp
+        linkSum += link.targetTimestamp - link.timestamp
+        let t0 = CACurrentMediaTime()
+        view?.draw()
+        cpuSum += CACurrentMediaTime() - t0
+    }
+
     func draw(in view: MTKView) {
-        let now = CACurrentMediaTime()
         lock.lock()
         let buffer = latest; let goal = target
-        motion.advance(to: goal, dt: lastDraw == 0 ? 0 : now - lastDraw)
+        motion.advance(to: goal, dt: frameDt)
         let amount = Float(motion.amount); let idle = motion.isIdle && goal == 0
         lock.unlock()
-        lastDraw = now
+        let now = CACurrentMediaTime()
+        frames += 1
+        if fpsWindowStart == 0 { fpsWindowStart = now }
+        else if now - fpsWindowStart >= 2 { let n = Double(self.frames); let fps = n / (now - self.fpsWindowStart)
+            let line = String(format: "%.1f fps  link %.2f ms  cpu %.2f ms  gpu %.2f ms  fold %.2f\n", fps, 1000 * linkSum / n, 1000 * cpuSum / n, gpuCount > 0 ? 1000 * gpuSum / Double(gpuCount) : 0, amount)
+            log.notice("\(line, privacy: .public)"); FileHandle.standardError.write(Data(line.utf8))
+            linkSum = 0; cpuSum = 0; gpuSum = 0; gpuCount = 0; frames = 0; fpsWindowStart = now }
         if idle { onIdle?() }
 
         guard let buffer, let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
@@ -86,7 +108,11 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             encoder.endEncoding()
         }
-        commandBuffer.addCompletedHandler { _ in _ = cvTexture }    // keep the CV texture alive until the GPU is done
+        commandBuffer.addCompletedHandler { [weak self] cb in
+            _ = cvTexture                                            // keep the CV texture alive until the GPU is done
+            guard let self else { return }
+            self.lock.lock(); self.gpuSum += cb.gpuEndTime - cb.gpuStartTime; self.gpuCount += 1; self.lock.unlock()
+        }
         commandBuffer.present(drawable)
         commandBuffer.commit()
         if !announcedFirstFrame { announcedFirstFrame = true; onFirstFrame?() }

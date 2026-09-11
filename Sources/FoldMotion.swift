@@ -17,7 +17,7 @@ struct FoldMotion {
     }
 
     /// One frame of critically damped motion; `settle` is roughly the time to arrive.
-    mutating func advance(to target: Double, dt: Double, settle: Double = 0.11) {
+    mutating func advance(to target: Double, dt: Double, settle: Double = 0.13) {
         let step = min(max(dt, 0), 1.0 / 30)     // a dropped frame must not launch the spring
         guard step > 0 else { return }
         let omega = 6.0 / settle

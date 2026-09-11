@@ -22,6 +22,7 @@ final class FoldController: ObservableObject {
     private var renderer: FoldRenderer?
     private var overlay: NSPanel?
     private var view: MTKView?
+    private var link: CADisplayLink?
     private var mirroring = false
     private var rate = 60
 
@@ -83,8 +84,14 @@ final class FoldController: ObservableObject {
         let view = MTKView(frame: NSRect(origin: .zero, size: screen.frame.size), device: device)
         view.colorPixelFormat = .bgra8Unorm
         view.framebufferOnly = true
-        view.preferredFramesPerSecond = rate
+        view.isPaused = true                  // we drive draws from the display link below
+        view.enableSetNeedsDisplay = false
         view.delegate = renderer
+        renderer.view = view
+        let link = view.displayLink(target: renderer, selector: #selector(FoldRenderer.tick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: Float(rate), maximum: Float(rate), preferred: Float(rate))
+        link.add(to: .main, forMode: .common)
+        self.link = link
         let panel = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .screenSaver
         panel.isOpaque = true; panel.backgroundColor = .black; panel.hasShadow = false
@@ -105,7 +112,7 @@ final class FoldController: ObservableObject {
         let pixelSize = CGSize(width: screen.frame.width * screen.backingScaleFactor, height: screen.frame.height * screen.backingScaleFactor)
         let windowID = CGWindowID(panel.windowNumber)
         Task {
-            do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: rate) }
+            do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: 60) }
             catch {
                 log.error("capture failed: \(error.localizedDescription, privacy: .public)")
                 endMirror(); isOn = false; lid.setRate(10)
@@ -119,7 +126,8 @@ final class FoldController: ObservableObject {
         mirroring = false
         log.notice("end mirror")
         capture?.stop(); capture = nil
-        view?.isPaused = true; view?.delegate = nil
+        link?.invalidate(); link = nil
+        view?.delegate = nil
         overlay?.orderOut(nil); overlay = nil; view = nil; renderer = nil
     }
 }
