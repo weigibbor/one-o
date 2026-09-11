@@ -94,6 +94,27 @@ final class FoldController: ObservableObject {
         }
     }
 
+    private func startReplay() {
+        // mimics this Mac's real sensor: samples every ~100 ms in multi-degree jumps (from a traced close/open)
+        var script: [(Double, Double)] = [(0, 114)]
+        var t = 3.0
+        for a in [109, 101, 95, 90, 86, 83, 80, 77, 75, 72, 68, 64, 60, 57, 53, 52] { script.append((t, Double(a))); t += 0.105 }
+        t += 1.5
+        for a in [54, 60, 68, 78, 86, 92, 99, 105, 110, 114] { script.append((t, Double(a))); t += 0.105 }
+        let start = CACurrentMediaTime()
+        var index = 0; var current = 110.0
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] timer in
+            let now = CACurrentMediaTime() - start
+            while index < script.count, script[index].0 <= now {
+                if index == 1 { FileHandle.standardError.write(Data(String(format: "S %.3f first step\n", CACurrentMediaTime()).utf8)) }
+                current = script[index].1; index += 1
+            }
+            Task { @MainActor in self?.receive(current) }
+            if index >= script.count, now > t + 4 { timer.invalidate(); FileHandle.standardError.write(Data("REPLAY DONE\n".utf8)) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
     func shutDown() { endMirror(); lid.stop() }
 
     private func receive(_ angle: Double?) {
