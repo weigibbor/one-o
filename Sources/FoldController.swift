@@ -121,7 +121,9 @@ final class FoldController: ObservableObject {
 
     private func receive(_ angle: Double?) {
         let wasReady = sensorReady
-        sensorReady = angle != nil; lidAngle = angle
+        // @Published fires on every assignment; the sensor is sampled 120x a second but only changes ~10x, so publish on change only
+        if sensorReady != (angle != nil) { sensorReady = angle != nil }
+        if lidAngle != angle { lidAngle = angle }
         if wasReady, angle == nil, isOn { turnOff(); message = "The lid sensor stopped answering. Turn One-O on again to reconnect." }
         if let angle { learnOpenPosition(angle, now: CACurrentMediaTime()) }
         guard isOn, let angle else { return }
