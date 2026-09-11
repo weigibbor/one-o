@@ -26,6 +26,7 @@ final class FoldController: ObservableObject {
     private var mirroring = false
     private var replaying = false
     private var captureActive = false
+    private var captureFps = 120
     private var lastAngle: Double?
     private var lastMove: CFTimeInterval = 0
     private var opening = true
@@ -111,7 +112,7 @@ final class FoldController: ObservableObject {
         let moved = lastMove > 0 && CACurrentMediaTime() - lastMove < 2
         if !mirroring { beginMirror() }
         let wantActive = moved || pinned != nil
-        if wantActive != captureActive { captureActive = wantActive; capture?.setRate(wantActive ? rate : 1) }
+        if wantActive != captureActive { captureActive = wantActive; capture?.setRate(wantActive ? captureFps : 1) }
         renderer?.setPinned(pinned)
         renderer?.receiveLid(angle, at: CACurrentMediaTime())
     }
@@ -127,6 +128,9 @@ final class FoldController: ObservableObject {
         view.colorPixelFormat = .bgra8Unorm
         view.framebufferOnly = true
         view.isPaused = true                  // we drive draws from the display link below
+        // With vsync pacing on, WindowServer returned our buffers at ~83 Hz on a 120 Hz panel and every frame waited ~10 ms.
+        // Presenting freely lets the display link set the cadence; the compositor still picks the latest frame per refresh.
+        (view.layer as? CAMetalLayer)?.displaySyncEnabled = false
         view.enableSetNeedsDisplay = false
         view.delegate = renderer
         renderer.view = view
@@ -158,10 +162,13 @@ final class FoldController: ObservableObject {
         capture.onStop = { [weak self] _ in Task { @MainActor in self?.endMirror() } }
         self.capture = capture
         let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) } ?? CGMainDisplayID()
-        let pixelSize = CGSize(width: screen.frame.width * screen.backingScaleFactor, height: screen.frame.height * screen.backingScaleFactor)
+        let d = UserDefaults.standard
+        let scale = d.object(forKey: "captureScale") as? Double ?? 1.0        // tuning: capture resolution relative to the panel
+        captureFps = d.object(forKey: "captureFps") as? Int ?? rate           // tuning: capture rate while folding
+        let pixelSize = CGSize(width: (screen.frame.width * screen.backingScaleFactor * scale).rounded(), height: (screen.frame.height * screen.backingScaleFactor * scale).rounded())
         let windowID = CGWindowID(panel.windowNumber)
         Task {
-            do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: captureActive ? rate : 1) }
+            do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: captureActive ? captureFps : 1) }
             catch {
                 log.error("capture failed: \(error.localizedDescription, privacy: .public)")
                 endMirror(); isOn = false; lid.setRate(10)

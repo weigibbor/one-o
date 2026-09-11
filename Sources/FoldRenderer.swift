@@ -40,7 +40,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     private var frameDt: Double = 0
     private var settle = 0.07
     private var frames = 0; private var fpsWindowStart: CFTimeInterval = 0
-    private var linkSum = 0.0, cpuSum = 0.0, gpuSum = 0.0, gpuCount = 0
+    private var linkSum = 0.0, cpuSum = 0.0, gpuSum = 0.0, gpuCount = 0, waitSum = 0.0
     weak var view: MTKView?
 
     init?(device: MTLDevice, openAngle: Double) {
@@ -93,12 +93,15 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         frames += 1
         if fpsWindowStart == 0 { fpsWindowStart = now }
         else if now - fpsWindowStart >= 2 { let n = Double(self.frames); let fps = n / (now - self.fpsWindowStart)
-            let line = String(format: "%.1f fps  link %.2f ms  cpu %.2f ms  gpu %.2f ms  fold %.2f\n", fps, 1000 * linkSum / n, 1000 * cpuSum / n, gpuCount > 0 ? 1000 * gpuSum / Double(gpuCount) : 0, amount)
+            let line = String(format: "%.1f fps  link %.2f ms  cpu %.2f ms  drawableWait %.2f ms  gpu %.2f ms  fold %.2f\n", fps, 1000 * linkSum / n, 1000 * cpuSum / n, 1000 * waitSum / n, gpuCount > 0 ? 1000 * gpuSum / Double(gpuCount) : 0, amount)
             log.notice("\(line, privacy: .public)"); FileHandle.standardError.write(Data(line.utf8))
-            linkSum = 0; cpuSum = 0; gpuSum = 0; gpuCount = 0; frames = 0; fpsWindowStart = now }
+            linkSum = 0; cpuSum = 0; gpuSum = 0; gpuCount = 0; waitSum = 0; frames = 0; fpsWindowStart = now }
         if idle { onIdle?() }
 
-        guard let buffer, let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
+        let tw = CACurrentMediaTime()
+        let drawableMaybe = view.currentDrawable
+        waitSum += CACurrentMediaTime() - tw
+        guard let buffer, let pass = view.currentRenderPassDescriptor, let drawable = drawableMaybe,
               let cache, let commandBuffer = commands.makeCommandBuffer() else { return }
         var cvTexture: CVMetalTexture?
         let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
