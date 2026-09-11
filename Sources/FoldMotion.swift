@@ -52,12 +52,14 @@ struct LidTracker {
         stepInterval = dt; lastChange = now; angle = value
     }
 
-    /// Where the lid most likely is right now: the last step plus up to one degree of extrapolation.
-    /// Never retracts; if the next step is late the guess simply parks until it arrives.
+    /// Where the lid most likely is right now: the last sample carried forward at the observed velocity.
+    /// This sensor reports about ten times a second in multi-degree jumps, so the carry can span several degrees;
+    /// it is capped at two sample intervals and never retracts, so a stopped lid parks instead of wobbling.
     func estimate(at now: CFTimeInterval) -> Double? {
         guard let angle else { return nil }
         guard stepInterval > 0 else { return angle }
-        let extra = min(max(velocity * (now - lastChange), -0.95), 0.95)
+        let limit = max(abs(velocity) * stepInterval * 2.0, 0.95)
+        let extra = min(max(velocity * (now - lastChange), -limit), limit)
         return angle + extra
     }
 }

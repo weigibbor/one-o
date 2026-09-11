@@ -38,7 +38,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     private var lastDraw: CFTimeInterval = 0
     private var announcedFirstFrame = false
     private var frameDt: Double = 0
-    private var settle = 0.07
+    private var settle = 0.09
     private var frames = 0; private var fpsWindowStart: CFTimeInterval = 0
     private var linkSum = 0.0, cpuSum = 0.0, gpuSum = 0.0, gpuCount = 0, waitSum = 0.0
     weak var view: MTKView?

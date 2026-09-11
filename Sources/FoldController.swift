@@ -79,12 +79,12 @@ final class FoldController: ObservableObject {
     }
 
     private func startReplay() {
-        // rest at 110 for 3 s, close 1°/300 ms to 60, hold 2 s, open 1°/120 ms back to 110, rest
-        var script: [(Double, Double)] = [(0, 110)]
+        // mimics this Mac's real sensor: samples every ~100 ms in multi-degree jumps (from a traced close/open)
+        var script: [(Double, Double)] = [(0, 114)]
         var t = 3.0
-        for a in stride(from: 109, through: 60, by: -1) { script.append((t, Double(a))); t += 0.3 }
-        t += 2
-        for a in stride(from: 61, through: 110, by: 1) { script.append((t, Double(a))); t += 0.12 }
+        for a in [109, 101, 95, 90, 86, 83, 80, 77, 75, 72, 68, 64, 60, 57, 53, 52] { script.append((t, Double(a))); t += 0.105 }
+        t += 1.5
+        for a in [54, 60, 68, 78, 86, 92, 99, 105, 110, 114] { script.append((t, Double(a))); t += 0.105 }
         let start = CACurrentMediaTime()
         var index = 0; var current = 110.0
         let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] timer in
