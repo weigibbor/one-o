@@ -154,7 +154,7 @@ final class FoldController: ObservableObject {
         let pixelSize = CGSize(width: screen.frame.width * screen.backingScaleFactor, height: screen.frame.height * screen.backingScaleFactor)
         let windowID = CGWindowID(panel.windowNumber)
         Task {
-            do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: 60) }
+            do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: rate) }
             catch {
                 log.error("capture failed: \(error.localizedDescription, privacy: .public)")
                 endMirror(); isOn = false; lid.setRate(10)
