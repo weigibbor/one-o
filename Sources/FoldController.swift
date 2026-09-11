@@ -58,7 +58,12 @@ final class FoldController: ObservableObject {
     /// A pause while closing keeps the old baseline so the fold does not snap flat halfway; opening past the
     /// baseline adopts the new angle at once.
     private func learnOpenPosition(_ angle: Double, now: CFTimeInterval) {
-        if let last = lastAngle, angle != last { opening = angle > last; lastMove = now }
+        if let last = lastAngle, angle != last {
+            opening = angle > last
+            // whole-degree steps: ease over twice the gap between steps so slow closes glide instead of pulsing
+            if lastMove > 0 { renderer?.setSettle(min(max(2 * (now - lastMove), 0.1), 0.6)) }
+            lastMove = now
+        }
         lastAngle = angle
         guard angle >= 25 else { return }
         let rested = lastMove > 0 && now - lastMove > 1.5

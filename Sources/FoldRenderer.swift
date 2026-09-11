@@ -34,6 +34,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     private var lastDraw: CFTimeInterval = 0
     private var announcedFirstFrame = false
     private var frameDt: Double = 0
+    private var settle = 0.13
     private var frames = 0; private var fpsWindowStart: CFTimeInterval = 0
     private var linkSum = 0.0, cpuSum = 0.0, gpuSum = 0.0, gpuCount = 0
     weak var view: MTKView?
@@ -55,6 +56,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     func receive(_ buffer: CVPixelBuffer) { lock.lock(); latest = buffer; lock.unlock() }
     func setTarget(_ value: Double) { lock.lock(); target = value; lock.unlock() }
     func setOpenAngle(_ value: Double) { lock.lock(); motion.openAngle = value; lock.unlock() }
+    func setSettle(_ value: Double) { lock.lock(); settle = value; lock.unlock() }
     func targetAmount(for lidAngle: Double?) -> Double { lock.lock(); defer { lock.unlock() }; return motion.target(for: lidAngle) }
     func reset() { lock.lock(); motion.reset(); target = 0; latest = nil; announcedFirstFrame = false; lastDraw = 0; lock.unlock() }
 
@@ -73,7 +75,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     func draw(in view: MTKView) {
         lock.lock()
         let buffer = latest; let goal = target
-        motion.advance(to: goal, dt: frameDt)
+        motion.advance(to: goal, dt: frameDt, settle: settle)
         let amount = Float(motion.amount); let idle = motion.isIdle && goal == 0
         lock.unlock()
         let now = CACurrentMediaTime()
