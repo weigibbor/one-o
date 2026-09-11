@@ -52,6 +52,12 @@ struct LidTracker {
         stepInterval = dt; lastChange = now; angle = value
     }
 
+    /// True while samples keep arriving and the lid has real angular speed; false once the next sample is overdue.
+    func isMoving(at now: CFTimeInterval) -> Bool {
+        guard stepInterval > 0 else { return false }
+        return abs(velocity) > 1.0 && now - lastChange < max(2.5 * stepInterval, 0.25)
+    }
+
     /// Where the lid most likely is right now: the last sample carried forward at the observed velocity.
     /// This sensor reports about ten times a second in multi-degree jumps, so the carry can span several degrees;
     /// it is capped at two sample intervals and never retracts, so a stopped lid parks instead of wobbling.
@@ -83,8 +89,9 @@ struct HoldAnchor {
         reference = angle; motionAngle = angle; lastMovement = now; settlingSince = nil
     }
 
-    mutating func update(angle: Double, now: TimeInterval, enabled: Bool) {
-        if abs(angle - motionAngle) >= movementThreshold { motionAngle = angle; lastMovement = now; settlingSince = nil }
+    mutating func update(angle: Double, now: TimeInterval, moving: Bool, enabled: Bool) {
+        // a lid that is still travelling never counts as at rest, however slowly it moves
+        if moving || abs(angle - motionAngle) >= movementThreshold { motionAngle = angle; lastMovement = now; settlingSince = nil }
         guard enabled, now - lastMovement >= delay else { settlingSince = nil; return }
         if abs(reference - angle) < 0.05 { reference = angle; settlingSince = nil; return }
         if settlingSince == nil { settlingSince = now; settlingFrom = reference }
