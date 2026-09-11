@@ -36,7 +36,7 @@ final class FoldController: ObservableObject {
 
     private func loadOptions() {
         let d = UserDefaults.standard
-        d.register(defaults: ["effectHold": true, "holdWarp": true, "holdPerspective": false, "holdBlur": true, "autoAnchor": true, "anchorDelay": 0.15])
+        d.register(defaults: ["effectHold": true, "holdWarp": true, "holdPerspective": false, "holdBlur": true, "autoAnchor": false, "anchorDelay": 0.15])
         options = EffectOptions(hold: d.bool(forKey: "effectHold"), warp: d.bool(forKey: "holdWarp"), perspective: d.bool(forKey: "holdPerspective"),
                                 blur: d.bool(forKey: "holdBlur"), autoAnchor: d.bool(forKey: "autoAnchor"), anchorDelay: d.double(forKey: "anchorDelay"))
     }

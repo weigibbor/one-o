@@ -70,7 +70,7 @@ struct SettingsView: View {
                 Toggle("Hold content angle", isOn: Binding(get: { fold.options.warp }, set: { fold.options.warp = $0 }))
                 Toggle("Perspective taper", isOn: Binding(get: { fold.options.perspective }, set: { fold.options.perspective = $0 })).disabled(!fold.options.warp)
                 Toggle("Progressive blur", isOn: Binding(get: { fold.options.blur }, set: { fold.options.blur = $0 }))
-                Toggle("Settle back when still", isOn: Binding(get: { fold.options.autoAnchor }, set: { fold.options.autoAnchor = $0 }))
+                Toggle("Settle back when the lid rests", isOn: Binding(get: { fold.options.autoAnchor }, set: { fold.options.autoAnchor = $0 }))
                 Picker("Pause before settling", selection: Binding(get: { fold.options.anchorDelay }, set: { fold.options.anchorDelay = $0 })) {
                     ForEach([0.15, 0.3, 0.5, 1.0, 2.0], id: \.self) { Text($0 < 1 ? "\(Int($0 * 1000)) ms" : "\(Int($0)) s").tag($0) }
                 }.disabled(!fold.options.autoAnchor)

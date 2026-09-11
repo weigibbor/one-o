@@ -19,7 +19,7 @@ struct EffectOptions {
     var warp = true            // hold: tilt-compensate the content, not just blur it
     var perspective = false    // hold: keystone taper from a finite eye position
     var blur = true            // hold: progressive blur
-    var autoAnchor = true      // hold: settle back after the lid rests
+    var autoAnchor = false     // hold: lid-plane style settle once the lid rests (off: hold wherever the lid stops)
     var anchorDelay = 0.15
 }
 
@@ -110,11 +110,18 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         var amount: Float = 0
         var nowVisible: Bool
         if opts.hold {
-            if var a = anchor, let e = estimate {
-                a.delay = opts.anchorDelay
-                a.update(angle: e, now: now, moving: tracker.isMoving(at: now), enabled: opts.autoAnchor && pinned == nil)
-                anchor = a
-                let target = pinned.map { Float($0) * 0.6 } ?? Float((a.reference - e) * .pi / 180)
+            if let e = estimate {
+                let reference: Double
+                if opts.autoAnchor, var a = anchor {
+                    // optional lid-plane behaviour: the reference settles onto the lid once it rests
+                    a.delay = opts.anchorDelay
+                    a.update(angle: e, now: now, moving: tracker.isMoving(at: now), enabled: pinned == nil)
+                    anchor = a; reference = a.reference
+                } else {
+                    // default: the reference is the learned open position, so the plane holds wherever the lid stops
+                    reference = motion.openAngle
+                }
+                let target = pinned.map { Float($0) * 0.6 } ?? Float((reference - e) * .pi / 180)
                 delta += (target - delta) * Float(1 - exp(-max(frameDt, 0) / 0.08))
             }
             nowVisible = abs(delta) > 0.002 && (opts.blur || opts.warp)
