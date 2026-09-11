@@ -24,6 +24,7 @@ final class FoldController: ObservableObject {
     private var view: MTKView?
     private var link: CADisplayLink?
     private var mirroring = false
+    private var replaying = false
     private var lastAngle: Double?
     private var lastMove: CFTimeInterval = 0
     private var opening = true
@@ -32,9 +33,12 @@ final class FoldController: ObservableObject {
     init() {
         let saved = UserDefaults.standard.double(forKey: "openAngle")
         openAngle = (25...180).contains(saved) ? saved : 100
-        lid.onAngle = { [weak self] angle in Task { @MainActor in self?.receive(angle) } }
+        lid.onAngle = { [weak self] angle in Task { @MainActor in if self?.replaying != true { self?.receive(angle) } } }
         lid.start()
-        if UserDefaults.standard.object(forKey: "debugAmount") != nil { Task { @MainActor in self.turnOn() } }
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "debugAmount") != nil || defaults.bool(forKey: "trace") || defaults.bool(forKey: "replay") { Task { @MainActor in self.turnOn() } }
+        // debug: `defaults write com.gelabs.oneo replay 1` plays a scripted slow close and re-open through the sensor path
+        if defaults.bool(forKey: "replay") { replaying = true; startReplay() }
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.endMirror() } }
         center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.lid.stop(); self?.lid.start() } }
@@ -58,20 +62,35 @@ final class FoldController: ObservableObject {
     /// A pause while closing keeps the old baseline so the fold does not snap flat halfway; opening past the
     /// baseline adopts the new angle at once.
     private func learnOpenPosition(_ angle: Double, now: CFTimeInterval) {
-        if let last = lastAngle, angle != last {
-            opening = angle > last
-            // whole-degree steps: ease over twice the gap between steps so slow closes glide instead of pulsing
-            if lastMove > 0 { renderer?.setSettle(min(max(2 * (now - lastMove), 0.1), 0.6)) }
-            lastMove = now
-        }
+        if let last = lastAngle, angle != last { opening = angle > last; lastMove = now }
         lastAngle = angle
         guard angle >= 25 else { return }
-        let rested = lastMove > 0 && now - lastMove > 1.5
-        if angle > openAngle || (rested && opening && abs(angle - openAngle) > 0.5) {
+        let restedFor = lastMove > 0 ? now - lastMove : 0
+        // adopt a new rest angle only when it is close to the old one, or the lid has clearly settled there
+        let adopt = opening && abs(angle - openAngle) > 0.5 && ((restedFor > 1.5 && abs(angle - openAngle) <= 10) || restedFor > 5)
+        if angle > openAngle || adopt {
             openAngle = angle
             UserDefaults.standard.set(angle, forKey: "openAngle")
             renderer?.setOpenAngle(angle)
         }
+    }
+
+    private func startReplay() {
+        // rest at 110 for 3 s, close 1°/300 ms to 60, hold 2 s, open 1°/120 ms back to 110, rest
+        var script: [(Double, Double)] = [(0, 110)]
+        var t = 3.0
+        for a in stride(from: 109, through: 60, by: -1) { script.append((t, Double(a))); t += 0.3 }
+        t += 2
+        for a in stride(from: 61, through: 110, by: 1) { script.append((t, Double(a))); t += 0.12 }
+        let start = CACurrentMediaTime()
+        var index = 0; var current = 110.0
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] timer in
+            let now = CACurrentMediaTime() - start
+            while index < script.count, script[index].0 <= now { current = script[index].1; index += 1 }
+            Task { @MainActor in self?.receive(current) }
+            if index >= script.count, now > t + 4 { timer.invalidate(); FileHandle.standardError.write(Data("REPLAY DONE\n".utf8)) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     func shutDown() { endMirror(); lid.stop() }
@@ -84,9 +103,11 @@ final class FoldController: ObservableObject {
         guard isOn, let angle else { return }
         // debug: `defaults write com.gelabs.oneo debugAmount 0.5` pins the fold; delete the key to go live
         let pinned = UserDefaults.standard.object(forKey: "debugAmount") as? Double
-        let target = pinned ?? FoldMotion(openAngle: openAngle).target(for: angle)
-        if target > 0, !mirroring { log.notice("lid \(angle, format: .fixed(precision: 0))° target \(target, format: .fixed(precision: 2)) → begin mirror"); beginMirror() }
-        renderer?.setTarget(target)
+        let moved = lastMove > 0 && CACurrentMediaTime() - lastMove < 2
+        // pre-warm on any lid motion so the mirror is already live when the fold begins
+        if (moved || pinned != nil), !mirroring { beginMirror() }
+        renderer?.setPinned(pinned)
+        renderer?.receiveLid(angle, at: CACurrentMediaTime())
     }
 
     private func refreshRate() -> Int { max(NSScreen.main?.maximumFramesPerSecond ?? 60, 60) }
@@ -113,11 +134,17 @@ final class FoldController: ObservableObject {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.contentView = view
-        panel.alphaValue = 0                 // stays invisible until the first mirrored frame lands
+        panel.alphaValue = 0                 // shown only while there is a fold and a frame to show
         panel.orderFrontRegardless()
         self.overlay = panel; self.view = view; self.renderer = renderer
-        renderer.onFirstFrame = { [weak self] in Task { @MainActor in log.notice("first frame, overlay visible"); self?.overlay?.alphaValue = 1 } }
-        renderer.onIdle = { [weak self] in Task { @MainActor in self?.endMirror() } }
+        var haveFrame = false, wantVisible = false
+        let show = { [weak self] in self?.overlay?.alphaValue = (haveFrame && wantVisible) ? 1 : 0 }
+        renderer.onFirstFrame = { Task { @MainActor in haveFrame = true; show() } }
+        renderer.onVisible = { on in Task { @MainActor in wantVisible = on; show() } }
+        renderer.onIdle = { [weak self] in Task { @MainActor in
+            guard let self, self.lastMove > 0, CACurrentMediaTime() - self.lastMove > 2 else { return }   // keep warm while the lid still moves
+            self.endMirror()
+        } }
 
         let capture = DesktopCapture()
         capture.onFrame = { [weak renderer] buffer in renderer?.receive(buffer) }

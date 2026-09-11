@@ -16,17 +16,48 @@ struct FoldMotion {
         return min(max((openAngle - lidAngle) / (openAngle - closedAngle), 0), 1)
     }
 
-    /// One frame of critically damped motion; `settle` is roughly the time to arrive.
-    mutating func advance(to target: Double, dt: Double, settle: Double = 0.13) {
-        let step = min(max(dt, 0), 1.0 / 30)     // a dropped frame must not launch the spring
-        guard step > 0 else { return }
-        let omega = 6.0 / settle
-        velocity += (omega * omega * (target - amount) - 2 * omega * velocity) * step
-        amount += velocity * step
+    /// One frame of critically damped motion, solved exactly so a late frame can never make it overshoot or blow up.
+    /// `settle` is roughly the time to arrive.
+    mutating func advance(to target: Double, dt: Double, settle: Double = 0.11) {
+        guard dt > 0 else { return }
+        let omega = 6.0 / max(settle, 0.02)
+        let offset = amount - target                     // x(t) = (A + B t) e^{-wt}, x'(t) = (B - w(A + B t)) e^{-wt}
+        let b = velocity + omega * offset
+        let decay = exp(-omega * dt)
+        let next = (offset + b * dt) * decay
+        velocity = (b - omega * (offset + b * dt)) * decay
+        amount = target + next
         if amount < 0 { amount = 0; velocity = 0 }
         if amount > 1 { amount = 1; velocity = 0 }
     }
 
     mutating func reset() { amount = 0; velocity = 0 }
     var isIdle: Bool { amount < 0.001 && abs(velocity) < 0.001 }
+}
+
+/// Predicts the lid angle between whole-degree sensor steps from the observed step rate, so the fold
+/// tracks the lid continuously instead of hopping once per degree.
+struct LidTracker {
+    private(set) var angle: Double?
+    private var lastChange: CFTimeInterval = 0
+    private var velocity = 0.0          // degrees per second, signed
+    private var stepInterval = 0.0
+
+    mutating func receive(_ value: Double, at now: CFTimeInterval) {
+        guard let last = angle else { angle = value; lastChange = now; return }
+        guard value != last else { return }
+        let dt = max(now - lastChange, 1.0 / 240)
+        let v = (value - last) / dt
+        velocity = (stepInterval == 0 || (v > 0) != (velocity > 0)) ? v : 0.5 * velocity + 0.5 * v   // reversal: trust the new direction
+        stepInterval = dt; lastChange = now; angle = value
+    }
+
+    /// Where the lid most likely is right now: the last step plus up to one degree of extrapolation.
+    /// Never retracts; if the next step is late the guess simply parks until it arrives.
+    func estimate(at now: CFTimeInterval) -> Double? {
+        guard let angle else { return nil }
+        guard stepInterval > 0 else { return angle }
+        let extra = min(max(velocity * (now - lastChange), -0.95), 0.95)
+        return angle + extra
+    }
 }

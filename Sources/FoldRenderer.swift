@@ -21,6 +21,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
 
     var onFirstFrame: (() -> Void)?
     var onIdle: (() -> Void)?
+    var onVisible: ((Bool) -> Void)?
 
     private let device: MTLDevice
     private let commands: MTLCommandQueue
@@ -29,12 +30,15 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     private var mipped: MTLTexture?
     private let lock = NSLock()
     private var latest: CVPixelBuffer?
-    private var target = 0.0
+    private var pinned: Double?          // debug: fixed fold amount
+    private var tracker = LidTracker()
     private var motion: FoldMotion
+    private var visible = false
+    private let trace = UserDefaults.standard.bool(forKey: "trace")
     private var lastDraw: CFTimeInterval = 0
     private var announcedFirstFrame = false
     private var frameDt: Double = 0
-    private var settle = 0.13
+    private var settle = 0.07
     private var frames = 0; private var fpsWindowStart: CFTimeInterval = 0
     private var linkSum = 0.0, cpuSum = 0.0, gpuSum = 0.0, gpuCount = 0
     weak var view: MTKView?
@@ -54,11 +58,12 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     }
 
     func receive(_ buffer: CVPixelBuffer) { lock.lock(); latest = buffer; lock.unlock() }
-    func setTarget(_ value: Double) { lock.lock(); target = value; lock.unlock() }
+    func setPinned(_ value: Double?) { lock.lock(); pinned = value; lock.unlock() }
+    func receiveLid(_ angle: Double, at now: CFTimeInterval) { lock.lock(); tracker.receive(angle, at: now); lock.unlock() }
     func setOpenAngle(_ value: Double) { lock.lock(); motion.openAngle = value; lock.unlock() }
     func setSettle(_ value: Double) { lock.lock(); settle = value; lock.unlock() }
     func targetAmount(for lidAngle: Double?) -> Double { lock.lock(); defer { lock.unlock() }; return motion.target(for: lidAngle) }
-    func reset() { lock.lock(); motion.reset(); target = 0; latest = nil; announcedFirstFrame = false; lastDraw = 0; lock.unlock() }
+    func reset() { lock.lock(); motion.reset(); pinned = nil; latest = nil; announcedFirstFrame = false; lastDraw = 0; lock.unlock() }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
@@ -73,12 +78,18 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
+        let now = CACurrentMediaTime()
         lock.lock()
-        let buffer = latest; let goal = target
+        let buffer = latest
+        let estimate = tracker.estimate(at: now)
+        let goal = pinned ?? motion.target(for: estimate)
         motion.advance(to: goal, dt: frameDt, settle: settle)
         let amount = Float(motion.amount); let idle = motion.isIdle && goal == 0
+        let nowVisible = motion.amount > 0.002
+        let visibilityChanged = nowVisible != visible; visible = nowVisible
         lock.unlock()
-        let now = CACurrentMediaTime()
+        if visibilityChanged { onVisible?(nowVisible) }
+        if trace { FileHandle.standardError.write(Data(String(format: "T %.3f lid %.2f goal %.3f amount %.3f\n", now, estimate ?? -1, goal, motion.amount).utf8)) }
         frames += 1
         if fpsWindowStart == 0 { fpsWindowStart = now }
         else if now - fpsWindowStart >= 2 { let n = Double(self.frames); let fps = n / (now - self.fpsWindowStart)
