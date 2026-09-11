@@ -14,7 +14,7 @@ struct FoldUniforms {
 
 /// Draws the latest desktop frame through the fold projection, easing the fold amount every frame.
 final class FoldRenderer: NSObject, MTKViewDelegate {
-    static let maxTilt: Float = 75 * .pi / 180     // panel rotation at a full fold
+    static let maxTilt: Float = 62 * .pi / 180     // panel rotation at a full fold
 
     var onFirstFrame: (() -> Void)?
     var onIdle: (() -> Void)?
@@ -78,7 +78,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         }
         let size = view.drawableSize
         var uniforms = FoldUniforms(res: SIMD2(Float(size.width), Float(size.height)), phi: amount * Self.maxTilt, motion: amount,
-                                    eyeZ: 1.8 * Float(size.height), maxRadius: 0.045 * Float(size.height), maxLod: Float(mips.mipmapLevelCount - 1))
+                                    eyeZ: 2.6 * Float(size.height), maxRadius: 0.045 * Float(size.height), maxLod: Float(mips.mipmapLevelCount - 1))
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
             encoder.setRenderPipelineState(pipeline)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FoldUniforms>.stride, index: 0)

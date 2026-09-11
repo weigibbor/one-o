@@ -2,6 +2,9 @@ import AppKit
 import MetalKit
 import ScreenCaptureKit
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "com.gelabs.oneo", category: "fold")
 
 /// Owns the sensor, the capture, the overlay window, and the renderer. Everything UI-facing lives here.
 @MainActor
@@ -27,6 +30,7 @@ final class FoldController: ObservableObject {
         openAngle = (25...180).contains(saved) ? saved : 100
         lid.onAngle = { [weak self] angle in Task { @MainActor in self?.receive(angle) } }
         lid.start()
+        if UserDefaults.standard.object(forKey: "debugAmount") != nil { Task { @MainActor in self.turnOn() } }
         let center = NSWorkspace.shared.notificationCenter
         center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.endMirror() } }
         center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.lid.stop(); self?.lid.start() } }
@@ -62,8 +66,10 @@ final class FoldController: ObservableObject {
         sensorReady = angle != nil; lidAngle = angle
         if wasReady, angle == nil, isOn { turnOff(); message = "The lid sensor stopped answering. Turn One-O on again to reconnect." }
         guard isOn, let angle else { return }
-        let target = FoldMotion(openAngle: openAngle).target(for: angle)
-        if target > 0, !mirroring { beginMirror() }
+        // debug: `defaults write com.gelabs.oneo debugAmount 0.5` pins the fold; delete the key to go live
+        let pinned = UserDefaults.standard.object(forKey: "debugAmount") as? Double
+        let target = pinned ?? FoldMotion(openAngle: openAngle).target(for: angle)
+        if target > 0, !mirroring { log.notice("lid \(angle, format: .fixed(precision: 0))° target \(target, format: .fixed(precision: 2)) → begin mirror"); beginMirror() }
         renderer?.setTarget(target)
     }
 
@@ -88,7 +94,7 @@ final class FoldController: ObservableObject {
         panel.alphaValue = 0                 // stays invisible until the first mirrored frame lands
         panel.orderFrontRegardless()
         self.overlay = panel; self.view = view; self.renderer = renderer
-        renderer.onFirstFrame = { [weak self] in Task { @MainActor in self?.overlay?.alphaValue = 1 } }
+        renderer.onFirstFrame = { [weak self] in Task { @MainActor in log.notice("first frame, overlay visible"); self?.overlay?.alphaValue = 1 } }
         renderer.onIdle = { [weak self] in Task { @MainActor in self?.endMirror() } }
 
         let capture = DesktopCapture()
@@ -100,13 +106,18 @@ final class FoldController: ObservableObject {
         let windowID = CGWindowID(panel.windowNumber)
         Task {
             do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: rate) }
-            catch { needsPermission = true; message = "Screen Recording is off for One-O. Allow it, then turn One-O on again."; endMirror() }
+            catch {
+                log.error("capture failed: \(error.localizedDescription, privacy: .public)")
+                endMirror(); isOn = false; lid.setRate(10)
+                needsPermission = true; message = "Screen Recording is off for One-O. Allow it, quit and reopen One-O, then turn it on."
+            }
         }
     }
 
     private func endMirror() {
         guard mirroring else { return }
         mirroring = false
+        log.notice("end mirror")
         capture?.stop(); capture = nil
         view?.isPaused = true; view?.delegate = nil
         overlay?.orderOut(nil); overlay = nil; view = nil; renderer = nil
