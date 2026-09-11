@@ -84,7 +84,7 @@ fragment float4 holdFragment(HoldVertexOut in [[stage_in]], texture2d<float> art
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     float2 uv = in.uv;
     float height = 1.0 - uv.y;                       // 0 at the hinge, 1 at the top edge
-    float a = clamp(p.x, -0.65, 1.25);
+    float a = clamp(p.x, -0.65, 1.45);           // keep tilting until the lid is almost shut; past ~83° the projection would flip
     float depth = height * sin(a);
     if (p.w > 0.5) {
         float3 eye = float3(0.0, 0.65, 1.6);

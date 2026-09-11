@@ -112,7 +112,7 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         if opts.hold {
             if var a = anchor, let e = estimate {
                 a.delay = opts.anchorDelay
-                a.update(angle: e, now: now, enabled: opts.autoAnchor && pinned == nil)
+                a.update(angle: e, now: now, moving: tracker.isMoving(at: now), enabled: opts.autoAnchor && pinned == nil)
                 anchor = a
                 let target = pinned.map { Float($0) * 0.6 } ?? Float((a.reference - e) * .pi / 180)
                 delta += (target - delta) * Float(1 - exp(-max(frameDt, 0) / 0.08))
