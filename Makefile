@@ -10,7 +10,7 @@ build:
 	xcrun -sdk macosx metallib build/Fold.air -o "$(APP)/Contents/Resources/default.metallib"
 	xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx14.0 $(SOURCES) \
 		-o "$(APP)/Contents/MacOS/OneO" \
-		-framework SwiftUI -framework AppKit -framework IOKit -framework ScreenCaptureKit -framework MetalKit
+		-framework SwiftUI -framework AppKit -framework IOKit -framework ScreenCaptureKit -framework MetalKit -framework MetalPerformanceShaders
 	cp Info.plist "$(APP)/Contents/Info.plist"
 	codesign --force --options runtime --sign "$(if $(SIGN_IDENTITY),$(SIGN_IDENTITY),-)" "$(APP)"
 

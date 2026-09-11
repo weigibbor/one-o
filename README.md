@@ -7,13 +7,18 @@ screen passes through its moving half. Open it and everything snaps back. One sc
 
 ## How it works
 
-- The lid angle comes from the MacBook's own lid sensor, polled at your display's refresh rate
-  (120 Hz on ProMotion, whatever your panel reports otherwise).
-- ScreenCaptureKit mirrors the display into a Metal texture. A fragment shader applies a fixed
-  front-view projection: the desktop is treated as a flat plane in space and every pixel shows what
-  a stationary eye would see through the swinging panel. Blur and darkening grow with distance from
-  the hinge.
-- A critically damped spring smooths the whole-degree sensor steps at frame rate.
+- The lid angle comes from the MacBook's own lid sensor. It reports about ten times a second in
+  multi-degree jumps, so One-O carries it forward at the observed velocity between samples and
+  renders on a display link at your panel's refresh rate (120 Hz on ProMotion).
+- ScreenCaptureKit mirrors the display into a Metal texture.
+- **Hold the plane** (default): the desktop keeps its angle in space while the physical panel moves
+  around it. Four Gaussian blur levels are blended by height and tilt, the image edge is feathered,
+  and once the lid rests for a moment the reference settles back so the real desktop shows again.
+  This effect follows jh3y/lid-plane (MIT), see `NOTICE`. Options: hold content angle, perspective
+  taper, progressive blur, settle delay, and **Anchor Here** in the menu.
+- **Duo fold**: the absolute fold. A fixed front-view projection treats the desktop as a flat plane
+  and every pixel shows what a stationary eye would see through the swinging panel; blur and
+  darkening grow from the hinge. Follows the study in chuspeeism/iphone-duo (MIT).
 
 Frames stay in memory on your Mac. Nothing is recorded, written to disk, or sent anywhere.
 The app has no network code at all.

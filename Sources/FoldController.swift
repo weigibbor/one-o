@@ -16,6 +16,7 @@ final class FoldController: ObservableObject {
     @Published private(set) var openAngle: Double
     @Published private(set) var message: String?
     @Published private(set) var needsPermission = false
+    @Published var options = EffectOptions() { didSet { saveOptions(); renderer?.setOptions(options) } }
 
     private let lid = LidAngle()
     private var capture: DesktopCapture?
@@ -33,9 +34,25 @@ final class FoldController: ObservableObject {
     private var opening = true
     private var rate = 60
 
+    private func loadOptions() {
+        let d = UserDefaults.standard
+        d.register(defaults: ["effectHold": true, "holdWarp": true, "holdPerspective": false, "holdBlur": true, "autoAnchor": true, "anchorDelay": 0.15])
+        options = EffectOptions(hold: d.bool(forKey: "effectHold"), warp: d.bool(forKey: "holdWarp"), perspective: d.bool(forKey: "holdPerspective"),
+                                blur: d.bool(forKey: "holdBlur"), autoAnchor: d.bool(forKey: "autoAnchor"), anchorDelay: d.double(forKey: "anchorDelay"))
+    }
+    private func saveOptions() {
+        let d = UserDefaults.standard
+        d.set(options.hold, forKey: "effectHold"); d.set(options.warp, forKey: "holdWarp"); d.set(options.perspective, forKey: "holdPerspective")
+        d.set(options.blur, forKey: "holdBlur"); d.set(options.autoAnchor, forKey: "autoAnchor"); d.set(options.anchorDelay, forKey: "anchorDelay")
+    }
+
+    /// Take the lid's current angle as the resting reference for the held plane.
+    func anchorHere() { renderer?.anchorHere() }
+
     init() {
         let saved = UserDefaults.standard.double(forKey: "openAngle")
         openAngle = (25...180).contains(saved) ? saved : 100
+        loadOptions()
         lid.onAngle = { [weak self] angle in Task { @MainActor in if self?.replaying != true { self?.receive(angle) } } }
         lid.start()
         let defaults = UserDefaults.standard
@@ -135,6 +152,7 @@ final class FoldController: ObservableObject {
         view.enableSetNeedsDisplay = false
         view.delegate = renderer
         renderer.view = view
+        renderer.setOptions(options)
         let link = view.displayLink(target: renderer, selector: #selector(FoldRenderer.tick(_:)))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: Float(rate), maximum: Float(rate), preferred: Float(rate))
         link.add(to: .main, forMode: .common)
@@ -164,7 +182,8 @@ final class FoldController: ObservableObject {
         self.capture = capture
         let displayID = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) } ?? CGMainDisplayID()
         let d = UserDefaults.standard
-        let scale = d.object(forKey: "captureScale") as? Double ?? 1.0        // tuning: capture resolution relative to the panel
+        let longSide = max(screen.frame.width, screen.frame.height) * screen.backingScaleFactor
+        let scale = d.object(forKey: "captureScale") as? Double ?? min(1.0, 2560.0 / longSide)   // cap the source like lid-plane; blur cost scales with it
         captureFps = d.object(forKey: "captureFps") as? Int ?? rate           // tuning: capture rate while folding
         let pixelSize = CGSize(width: (screen.frame.width * screen.backingScaleFactor * scale).rounded(), height: (screen.frame.height * screen.backingScaleFactor * scale).rounded())
         let windowID = CGWindowID(panel.windowNumber)

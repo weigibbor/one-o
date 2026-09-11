@@ -63,3 +63,34 @@ struct LidTracker {
         return angle + extra
     }
 }
+
+/// Reference angle for the hold-the-plane effect. Movement of 1.5° or more restarts a debounce; once the lid
+/// has been still for `delay`, the reference eases to the current angle over `duration`, which settles the
+/// desktop back into place. Behaviour after jh3y/lid-plane (MIT).
+struct HoldAnchor {
+    private(set) var reference: Double
+    var delay: TimeInterval = 0.15
+    var duration: TimeInterval = 0.2
+    var movementThreshold = 1.5
+    private var motionAngle: Double
+    private var lastMovement: TimeInterval
+    private var settlingSince: TimeInterval?
+    private var settlingFrom = 0.0
+
+    init(angle: Double, now: TimeInterval) { reference = angle; motionAngle = angle; lastMovement = now }
+
+    mutating func anchor(at angle: Double, now: TimeInterval) {
+        reference = angle; motionAngle = angle; lastMovement = now; settlingSince = nil
+    }
+
+    mutating func update(angle: Double, now: TimeInterval, enabled: Bool) {
+        if abs(angle - motionAngle) >= movementThreshold { motionAngle = angle; lastMovement = now; settlingSince = nil }
+        guard enabled, now - lastMovement >= delay else { settlingSince = nil; return }
+        if abs(reference - angle) < 0.05 { reference = angle; settlingSince = nil; return }
+        if settlingSince == nil { settlingSince = now; settlingFrom = reference }
+        let progress = min(1, max(0, (now - settlingSince!) / max(0.01, duration)))
+        let eased = progress * progress * (3 - 2 * progress)
+        reference = settlingFrom + (angle - settlingFrom) * eased
+        if progress == 1 { settlingSince = nil }
+    }
+}
