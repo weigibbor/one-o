@@ -110,12 +110,13 @@ final class FoldRenderer: NSObject, MTKViewDelegate {
         var amount: Float = 0
         var nowVisible: Bool
         if opts.hold {
-            if var a = anchor, let e = estimate {
+            // lid-plane behaviour, unchanged: raw sensor angle, 1.5° / 150 ms / 200 ms anchor, 80 ms filter, 1.25 rad clamp
+            if var a = anchor, let raw = tracker.angle {
                 a.delay = opts.anchorDelay
-                a.update(angle: e, now: now, enabled: opts.autoAnchor && pinned == nil)
+                a.update(angle: raw, now: now, enabled: opts.autoAnchor && pinned == nil)
                 anchor = a
-                let target = pinned.map { Float($0) * 0.6 } ?? Float((a.reference - e) * .pi / 180)
-                delta += (target - delta) * Float(1 - exp(-max(frameDt, 0) / 0.08))
+                let target = pinned.map { Float($0) * 0.6 } ?? Float((a.reference - raw) * .pi / 180)
+                delta += (target - delta) * Float(1 - exp(-min(0.1, max(frameDt, 0)) / 0.08))
             }
             nowVisible = abs(delta) > 0.002 && (opts.blur || opts.warp)
         } else {
