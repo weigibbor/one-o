@@ -31,8 +31,8 @@ make install      # builds, signs, copies to /Applications
 open /Applications/One-O.app
 ```
 
-Grant Screen Recording when asked, then turn One-O on from the menu bar. Set your usual lid
-position with **Set open position** so the fold starts the moment the lid moves.
+Grant Screen Recording when asked, then turn One-O on from the menu bar. The open position is
+learned from wherever the lid rests, so the fold starts the moment the lid moves.
 
 ## Source map
 

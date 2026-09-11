@@ -24,6 +24,9 @@ final class FoldController: ObservableObject {
     private var view: MTKView?
     private var link: CADisplayLink?
     private var mirroring = false
+    private var lastAngle: Double?
+    private var lastMove: CFTimeInterval = 0
+    private var opening = true
     private var rate = 60
 
     init() {
@@ -51,13 +54,19 @@ final class FoldController: ObservableObject {
 
     func turnOff() { endMirror(); isOn = false; lid.setRate(10) }
 
-    /// Remember the current lid angle as the resting open position.
-    func setOpenPosition() {
-        guard let lidAngle, lidAngle >= 25 else { message = "Open the lid to your usual position first."; return }
-        openAngle = lidAngle
-        UserDefaults.standard.set(lidAngle, forKey: "openAngle")
-        renderer?.setOpenAngle(lidAngle)
-        message = nil
+    /// The open position follows the lid on its own: wherever it rests after opening becomes the baseline.
+    /// A pause while closing keeps the old baseline so the fold does not snap flat halfway; opening past the
+    /// baseline adopts the new angle at once.
+    private func learnOpenPosition(_ angle: Double, now: CFTimeInterval) {
+        if let last = lastAngle, angle != last { opening = angle > last; lastMove = now }
+        lastAngle = angle
+        guard angle >= 25 else { return }
+        let rested = lastMove > 0 && now - lastMove > 1.5
+        if angle > openAngle || (rested && opening && abs(angle - openAngle) > 0.5) {
+            openAngle = angle
+            UserDefaults.standard.set(angle, forKey: "openAngle")
+            renderer?.setOpenAngle(angle)
+        }
     }
 
     func shutDown() { endMirror(); lid.stop() }
@@ -66,6 +75,7 @@ final class FoldController: ObservableObject {
         let wasReady = sensorReady
         sensorReady = angle != nil; lidAngle = angle
         if wasReady, angle == nil, isOn { turnOff(); message = "The lid sensor stopped answering. Turn One-O on again to reconnect." }
+        if let angle { learnOpenPosition(angle, now: CACurrentMediaTime()) }
         guard isOn, let angle else { return }
         // debug: `defaults write com.gelabs.oneo debugAmount 0.5` pins the fold; delete the key to go live
         let pinned = UserDefaults.standard.object(forKey: "debugAmount") as? Double

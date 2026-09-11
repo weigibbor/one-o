@@ -13,7 +13,6 @@ struct OneOApp: App {
         .windowStyle(.hiddenTitleBar).windowResizability(.contentSize).defaultPosition(.center)
         MenuBarExtra("One-O", systemImage: fold.isOn ? "laptopcomputer.and.arrow.down" : "laptopcomputer") {
             Button(fold.isOn ? "Turn off" : "Turn on") { fold.isOn ? fold.turnOff() : fold.turnOn() }.disabled(fold.isStarting)
-            Button("Set open position") { fold.setOpenPosition() }.disabled(!fold.sensorReady)
             Divider()
             SettingsLink { Text("Settings…") }.keyboardShortcut(",")
             Button("Quit One-O") { NSApp.terminate(nil) }.keyboardShortcut("q")
@@ -44,8 +43,7 @@ struct SettingsView: View {
             HStack {
                 Text(fold.lidAngle.map { "Lid \(Int($0))°" } ?? "Lid sensor not found").monospacedDigit()
                 Spacer()
-                Text("Open position \(Int(fold.openAngle))°").foregroundStyle(.secondary).monospacedDigit()
-                Button("Set to current") { fold.setOpenPosition() }.disabled(!fold.sensorReady)
+                Text("Rests at \(Int(fold.openAngle))°, learned automatically").foregroundStyle(.secondary).monospacedDigit()
             }.font(.callout)
             if let message = fold.message { Text(message).font(.callout).foregroundStyle(.orange) }
             if fold.needsPermission {
