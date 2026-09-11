@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>One-O</string>
+	<key>CFBundleExecutable</key>
+	<string>OneO</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.gelabs.oneo</string>
+	<key>CFBundleName</key>
+	<string>OneO</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>One-O mirrors this display so it can fold with the lid. Frames stay in memory on this Mac. Nothing is recorded, written to disk, or sent anywhere.</string>
+</dict>
+</plist>
