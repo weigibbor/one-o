@@ -83,6 +83,7 @@ struct SettingsView: View {
             }
             Divider()
             Toggle("Check for updates automatically", isOn: $updater.autoCheck)
+            Toggle("Install updates automatically", isOn: $updater.autoInstall).disabled(!updater.autoCheck)
             HStack {
                 Text("Version \(Updater.currentVersion)")
                 Spacer()

@@ -18,6 +18,8 @@ final class Updater: ObservableObject {
     @Published private(set) var lastChecked: Date?
     @Published private(set) var lastError: String?
     @Published var autoCheck: Bool { didSet { UserDefaults.standard.set(autoCheck, forKey: "autoCheck") } }
+    /// Install verified updates as soon as they are found, then relaunch. Off by default.
+    @Published var autoInstall: Bool { didSet { UserDefaults.standard.set(autoInstall, forKey: "autoInstall") } }
 
     nonisolated static let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     private static let latest = URL(string: "https://api.github.com/repos/weigibbor/one-o/releases/latest")!
@@ -25,6 +27,7 @@ final class Updater: ObservableObject {
 
     init() {
         autoCheck = UserDefaults.standard.object(forKey: "autoCheck") as? Bool ?? true
+        autoInstall = UserDefaults.standard.bool(forKey: "autoInstall")
         Task { try? await Task.sleep(for: .seconds(10)); check(manual: false) }
         Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { [weak self] _ in Task { @MainActor in self?.check(manual: false) } }
     }
@@ -46,6 +49,7 @@ final class Updater: ObservableObject {
                 guard let release = Self.parseRelease(data) else { throw Failure("The latest release has no One-O.zip.") }
                 available = Self.isNewer(release.version, than: Self.currentVersion) ? release : nil
                 lastChecked = .now
+                if available != nil, autoInstall, !manual { install() }
             } catch {
                 log.notice("check failed: \(error.localizedDescription, privacy: .public)")
                 if manual { lastError = error.localizedDescription }
