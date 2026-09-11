@@ -48,9 +48,8 @@ learned from wherever the lid rests, so the fold starts the moment the lid moves
 
 ## Website
 
-`web/` is the one-o site: Next.js 16, Stripe Checkout at $1, and a download route that hands out the
-signed DMG only for a paid Stripe session. Deploy it on Vercel with the project root set to `web`.
-Env vars are listed in `web/.env.example`; publish a build with `make dmg` then `npm run publish-dmg`.
+The landing page and the $1 checkout live in a separate private repository, `weigibbor/one-o-web`.
+This repository is the app only.
 
 ## Credits
 
