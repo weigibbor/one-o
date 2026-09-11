@@ -25,6 +25,7 @@ final class FoldController: ObservableObject {
     private var link: CADisplayLink?
     private var mirroring = false
     private var replaying = false
+    private var sleeping = false
     private var captureActive = false
     private var captureFps = 120
     private var lastAngle: Double?
@@ -42,8 +43,8 @@ final class FoldController: ObservableObject {
         // debug: `defaults write com.gelabs.oneo replay 1` plays a scripted slow close and re-open through the sensor path
         if defaults.bool(forKey: "replay") { replaying = true; startReplay() }
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.endMirror() } }
-        center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.lid.stop(); self?.lid.start() } }
+        center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.sleeping = true; self?.endMirror() } }
+        center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in self?.sleeping = false; self?.lid.stop(); self?.lid.start() } }
     }
 
     func turnOn() {
@@ -110,7 +111,7 @@ final class FoldController: ObservableObject {
         // debug: `defaults write com.gelabs.oneo debugAmount 0.5` pins the fold; delete the key to go live
         let pinned = UserDefaults.standard.object(forKey: "debugAmount") as? Double
         let moved = lastMove > 0 && CACurrentMediaTime() - lastMove < 2
-        if !mirroring { beginMirror() }
+        if !mirroring, !sleeping { beginMirror() }        // a fresh mirror mid-sleep would restart the fold from flat
         let wantActive = moved || pinned != nil
         if wantActive != captureActive { captureActive = wantActive; capture?.setRate(wantActive ? captureFps : 1) }
         renderer?.setPinned(pinned)
