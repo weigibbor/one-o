@@ -20,3 +20,8 @@ install: build
 
 clean:
 	rm -rf build
+
+dmg: build
+	rm -rf dist && mkdir -p dist/stage && ditto "$(APP)" dist/stage/One-O.app && ln -s /Applications dist/stage/Applications
+	hdiutil create -quiet -ov -volname "One-O" -srcfolder dist/stage -format UDZO dist/One-O.dmg && rm -rf dist/stage
+	shasum -a 256 dist/One-O.dmg

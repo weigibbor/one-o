@@ -46,6 +46,12 @@ position with **Set open position** so the fold starts the moment the lid moves.
 | `Sources/OneOApp.swift` | Menu bar app and settings window |
 | `Resources/Fold.metal` | The fold projection and progressive blur |
 
+## Website
+
+`web/` is the one-o site: Next.js 16, Stripe Checkout at $1, and a download route that hands out the
+signed DMG only for a paid Stripe session. Deploy it on Vercel with the project root set to `web`.
+Env vars are listed in `web/.env.example`; publish a build with `make dmg` then `npm run publish-dmg`.
+
 ## Credits
 
 The fixed front-view projection follows the fold study in
