@@ -25,6 +25,7 @@ final class FoldController: ObservableObject {
     private var link: CADisplayLink?
     private var mirroring = false
     private var replaying = false
+    private var captureActive = false
     private var lastAngle: Double?
     private var lastMove: CFTimeInterval = 0
     private var opening = true
@@ -53,6 +54,7 @@ final class FoldController: ObservableObject {
             catch { needsPermission = true; message = "One-O needs Screen Recording to mirror the desktop."; isStarting = false; return }
             isOn = true; isStarting = false
             lid.setRate(Double(refreshRate()))
+            beginMirror()                                  // warm: stream alive at 1 fps until the lid moves
         }
     }
 
@@ -86,7 +88,10 @@ final class FoldController: ObservableObject {
         var index = 0; var current = 110.0
         let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] timer in
             let now = CACurrentMediaTime() - start
-            while index < script.count, script[index].0 <= now { current = script[index].1; index += 1 }
+            while index < script.count, script[index].0 <= now {
+                if index == 1 { FileHandle.standardError.write(Data(String(format: "S %.3f first step\n", CACurrentMediaTime()).utf8)) }
+                current = script[index].1; index += 1
+            }
             Task { @MainActor in self?.receive(current) }
             if index >= script.count, now > t + 4 { timer.invalidate(); FileHandle.standardError.write(Data("REPLAY DONE\n".utf8)) }
         }
@@ -104,8 +109,9 @@ final class FoldController: ObservableObject {
         // debug: `defaults write com.gelabs.oneo debugAmount 0.5` pins the fold; delete the key to go live
         let pinned = UserDefaults.standard.object(forKey: "debugAmount") as? Double
         let moved = lastMove > 0 && CACurrentMediaTime() - lastMove < 2
-        // pre-warm on any lid motion so the mirror is already live when the fold begins
-        if (moved || pinned != nil), !mirroring { beginMirror() }
+        if !mirroring { beginMirror() }
+        let wantActive = moved || pinned != nil
+        if wantActive != captureActive { captureActive = wantActive; capture?.setRate(wantActive ? rate : 1) }
         renderer?.setPinned(pinned)
         renderer?.receiveLid(angle, at: CACurrentMediaTime())
     }
@@ -138,13 +144,14 @@ final class FoldController: ObservableObject {
         panel.orderFrontRegardless()
         self.overlay = panel; self.view = view; self.renderer = renderer
         var haveFrame = false, wantVisible = false
-        let show = { [weak self] in self?.overlay?.alphaValue = (haveFrame && wantVisible) ? 1 : 0 }
+        let show = { [weak self] in
+            let on = haveFrame && wantVisible
+            if (self?.overlay?.alphaValue ?? 0) != (on ? 1 : 0), UserDefaults.standard.bool(forKey: "trace") { FileHandle.standardError.write(Data(String(format: "V %.3f %@\n", CACurrentMediaTime(), on ? "shown" : "hidden").utf8)) }
+            self?.overlay?.alphaValue = on ? 1 : 0
+        }
         renderer.onFirstFrame = { Task { @MainActor in haveFrame = true; show() } }
         renderer.onVisible = { on in Task { @MainActor in wantVisible = on; show() } }
-        renderer.onIdle = { [weak self] in Task { @MainActor in
-            guard let self, self.lastMove > 0, CACurrentMediaTime() - self.lastMove > 2 else { return }   // keep warm while the lid still moves
-            self.endMirror()
-        } }
+        renderer.onIdle = nil                                   // stays warm while on; endMirror runs on turn off and sleep
 
         let capture = DesktopCapture()
         capture.onFrame = { [weak renderer] buffer in renderer?.receive(buffer) }
@@ -154,7 +161,7 @@ final class FoldController: ObservableObject {
         let pixelSize = CGSize(width: screen.frame.width * screen.backingScaleFactor, height: screen.frame.height * screen.backingScaleFactor)
         let windowID = CGWindowID(panel.windowNumber)
         Task {
-            do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: rate) }
+            do { try await capture.start(displayID: displayID, excluding: [windowID], pixelSize: pixelSize, fps: captureActive ? rate : 1) }
             catch {
                 log.error("capture failed: \(error.localizedDescription, privacy: .public)")
                 endMirror(); isOn = false; lid.setRate(10)

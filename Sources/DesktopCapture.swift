@@ -6,6 +6,7 @@ final class DesktopCapture: NSObject, SCStreamOutput, SCStreamDelegate {
     var onFrame: ((CVPixelBuffer) -> Void)?
     var onStop: ((Error) -> Void)?
     private var stream: SCStream?
+    private var lastConfig = (width: 0, height: 0)
     private let queue = DispatchQueue(label: "com.gelabs.oneo.capture", qos: .userInteractive)
 
     enum Failure: Error { case noDisplay }
@@ -17,6 +18,7 @@ final class DesktopCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         let filter = SCContentFilter(display: display, excludingWindows: content.windows.filter { windowIDs.contains($0.windowID) })
         let config = SCStreamConfiguration()
         config.width = Int(pixelSize.width); config.height = Int(pixelSize.height)
+        lastConfig = (config.width, config.height)
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.colorSpaceName = CGColorSpace.sRGB
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
@@ -26,6 +28,19 @@ final class DesktopCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         try await stream.startCapture()
         self.stream = stream
+    }
+
+    /// Keep the stream alive but nearly idle between folds; switching rate is instant, starting a stream is not.
+    func setRate(_ fps: Int) {
+        guard let stream else { return }
+        let config = SCStreamConfiguration()
+        config.width = lastConfig.width; config.height = lastConfig.height
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.colorSpaceName = CGColorSpace.sRGB
+        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(fps, 1)))
+        config.queueDepth = 3
+        config.showsCursor = false
+        Task { try? await stream.updateConfiguration(config) }
     }
 
     func stop() {
